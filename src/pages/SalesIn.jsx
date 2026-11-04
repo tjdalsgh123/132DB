@@ -1,7 +1,7 @@
 // KDC 매출 등록 (mode: 'promoter' = 홍보팀장 · 'direct' = 지국 직할 · general = 총국장 직할)
 // Case = 상품 최대 3개 묶음 × 등록자 수 · 저장된 Case는 아래 「상품별 건수」에 합쳐 보이고, 위에서는 새 Case만 추가
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { directName, D, save, products, pmap, vendorName, categoryName, bname, pname, keyPrefix, branchChoices, promoterChoices, findEntry, casesOf, singlesOf, applicantRanges, rangeText, salesLocked } from '../lib/store.js';
+import { directName, D, save, products, pmap, vendorName, categoryName, bname, pname, keyPrefix, branchChoices, promoterChoices, findEntry, casesOf, singlesOf, singleNotesOf, applicantRanges, rangeText, salesLocked } from '../lib/store.js';
 import { generalBranch } from '../lib/branchpay.js';
 import { won, MSG, nowYm, addYm, ymText, pad, sum, errText } from '../lib/ui.js';
 import { useData } from '../hooks/useData.js';
@@ -11,7 +11,7 @@ const MAXP = 3;
 const toLocal = (c) => ({ key: c.key, no: c.no, name: c.name, headcount: c.headcount, memo: c.memo, products: c.items.map((x) => x.pid) });
 const unit = (c, pm) => { let a = 0, r = 0, m = 0; c.products.forEach((pid) => { const p = pid && pm.get(pid); if (p) { a += p['판매가'] || 0; r += p['인정액'] || 0; m += p['수당'] || 0; } }); return { a, r, m }; };
 const caseQty = (list) => { const q = new Map(); list.forEach((c) => { const n = Number(c.headcount) || 0; c.products.forEach((pid) => { if (pid) q.set(pid, (q.get(pid) || 0) + n); }); }); return q; };
-const singlesArr = (m) => Array.from(m.entries()).filter(([, n]) => n > 0).map(([productId, qty]) => ({ productId, qty }));
+const singlesArr = (m, notes) => Array.from(m.entries()).filter(([, n]) => n !== 0).map(([productId, qty]) => ({ productId, qty, note: qty < 0 ? String((notes && notes.get(productId)) || '').trim() : '' }));
 const inv = (bad, id) => (bad.has(id) ? { className: 'in invalid', 'aria-invalid': 'true' } : { className: 'in' });
 
 export default function SalesIn({ mode, general }) {
@@ -26,12 +26,12 @@ export default function SalesIn({ mode, general }) {
   const sig = [branch, promoter, ym, entry ? [entry.entry_id, entry.amount, entry.cnt, entry.updated_at].join(':') : ''].join('|');
   const head = [branch, promoter, ym].join('|');
   const saved = useMemo(() => casesOf(entry), [sig]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [L, setL] = useState({ base: null, head: null, memo: '', cases: [], singles: new Map(), showSaved: false, dirty: false, editing: new Map() });
+  const [L, setL] = useState({ base: null, head: null, memo: '', cases: [], singles: new Map(), notes: new Map(), enote: new Map(), showSaved: false, dirty: false, editing: new Map() });
   const [st, setSt] = useStatus(); const [bad, setBad] = useState(new Set()); const caseBox = useRef(null);
   const lock = salesLocked(ym, false);
   // 지금 DB 기준으로 다시 불러오기
   const fresh = (patch = {}) => { const e = branch && (!isP || promoter) && ym ? findEntry(branch, isP ? promoter : null, ym) : null; const sv = casesOf(e);
-    return { base: [branch, promoter, ym, e ? [e.entry_id, e.amount, e.cnt, e.updated_at].join(':') : ''].join('|'), head, memo: e ? e.memo || '' : '', cases: patch.showSaved ? sv.map(toLocal) : [], singles: singlesOf(e), showSaved: false, dirty: false, editing: new Map(), ...patch, sv }; };
+    return { base: [branch, promoter, ym, e ? [e.entry_id, e.amount, e.cnt, e.updated_at].join(':') : ''].join('|'), head, memo: e ? e.memo || '' : '', cases: patch.showSaved ? sv.map(toLocal) : [], singles: singlesOf(e), notes: singleNotesOf(e), enote: new Map(), showSaved: false, dirty: false, editing: new Map(), ...patch, sv }; };
   // 매출이 바뀌면(다른 사람 저장·월 바꿈) 다시 불러오기 · 같은 달을 편집 중이면 입력은 그대로
   useEffect(() => {
     if (L.base === sig) return;
@@ -56,10 +56,10 @@ export default function SalesIn({ mode, general }) {
   // 저장 (save 가 최신 데이터를 다시 읽은 뒤 끝남)
   const run = async (fn, args, done) => { try { const r = await save(fn, args); done(r || {}); } catch (e) { setSt(errText(e), 'bad'); } };
   // 저장 뒤: 저장된 Case는 목록에서 빠지고(아래 표에 합쳐짐), 저장 전 Case는 그대로 남김
-  const after = (local, singles, memoV, msg) => {
+  const after = (local, singles, memoV, msg, notes) => {
     const f = fresh(); const keepNew = local.filter((c) => !f.sv.some((x) => x.key === keyOf(c)));
     const { sv, ...n } = f; // eslint-disable-line no-unused-vars
-    setL({ ...n, memo: memoV, singles, showSaved: L.showSaved, cases: (L.showSaved ? sv.map(toLocal) : []).concat(keepNew), dirty: keepNew.length > 0 });
+    setL({ ...n, memo: memoV, singles, notes: notes || n.notes, showSaved: L.showSaved, cases: (L.showSaved ? sv.map(toLocal) : []).concat(keepNew), dirty: keepNew.length > 0 });
     setSt(msg, 'ok');
   };
   const keepLocal = (skipKey) => L.cases.filter((c) => keyOf(c) !== skipKey).map((c) => ({ ...c, products: c.products.slice() }));
@@ -73,17 +73,20 @@ export default function SalesIn({ mode, general }) {
     const total = L.editing.get(p.id); if (total == null) return;
     const need = headNeed(); if (need.length) { fail(need); return; }
     const svq = caseQty(saved.map(toLocal));
-    const sing = singlesOf(entry); const extra = Math.max(0, total - (svq.get(p.id) || 0)); if (extra) sing.set(p.id, extra); else sing.delete(p.id);
-    const localS = new Map(L.singles); const extraL = Math.max(0, total - caseN); if (extraL) localS.set(p.id, extraL); else localS.delete(p.id);
+    const note = String(L.enote.has(p.id) ? L.enote.get(p.id) : (L.notes.get(p.id) || '')).trim();
+    const sing = singlesOf(entry); const notes = singleNotesOf(entry); const extra = total - (svq.get(p.id) || 0); if (extra) sing.set(p.id, extra); else sing.delete(p.id);
+    if (extra < 0) notes.set(p.id, note); else notes.delete(p.id);
+    const localS = new Map(L.singles); const extraL = total - caseN; if (extraL) localS.set(p.id, extraL); else localS.delete(p.id);
+    const localN = new Map(L.notes); if (extraL < 0) localN.set(p.id, note); else localN.delete(p.id);
     const local = keepLocal(null);
-    run('app_sales_save_all', { ...target, p_memo: entry ? entry.memo || '' : '', p_cases: saved.map(toLocal).map((c, i) => ({ ...payload(c, i), new: false })), p_singles: singlesArr(sing) },
-      (r) => after(local.filter((c) => !savedCase(keyOf(c))), localS, L.memo, (p['강의명'] || p.id) + ' 합계 ' + won(total) + '건으로 저장 · 월 합계 ' + won(r.amount || 0) + '원'));
+    run('app_sales_save_all', { ...target, p_memo: entry ? entry.memo || '' : '', p_cases: saved.map(toLocal).map((c, i) => ({ ...payload(c, i), new: false })), p_singles: singlesArr(sing, notes) },
+      (r) => after(local.filter((c) => !savedCase(keyOf(c))), localS, L.memo, (p['강의명'] || p.id) + ' 합계 ' + won(total) + '건으로 저장' + (extra < 0 ? ' (미승인 차감 ' + won(-extra) + '건)' : '') + ' · 월 합계 ' + won(r.amount || 0) + '원', localN));
   };
   const saveAll = () => {
     let need = headNeed(); L.cases.forEach((c, i) => { need = need.concat(caseNeed(c, i)); });
     if (need.length) { fail(need); return; }
     if (!allCases.length && !L.singles.size && !entry) { setSt(MSG + ' · Case를 추가하거나 상품별 건수를 입력하세요', 'bad'); return; }
-    run('app_sales_save_all', { ...target, p_memo: L.memo || '', p_cases: allCases.map(payload), p_singles: singlesArr(L.singles) }, (r) => {
+    run('app_sales_save_all', { ...target, p_memo: L.memo || '', p_cases: allCases.map(payload), p_singles: singlesArr(L.singles, L.notes) }, (r) => {
       const { sv, ...n } = fresh(); setL(n); setBad(new Set()); // eslint-disable-line no-unused-vars
       setSt((isP ? pname(promoter) : bname(branch) + ' 직할') + ' ' + ym + ' 매출을 ' + (r.new ? '등록' : '전체 저장') + '했습니다 · ' + won(r.count || 0) + '건 · ' + won(r.amount || 0) + '원', 'ok');
     });
@@ -105,9 +108,9 @@ export default function SalesIn({ mode, general }) {
 
   if (!bc.length) return (<div className="page"><Head isP={isP} GEN={GEN} /><Card><h2>볼 수 있는 지국이 없습니다</h2><p className="note">{isP ? '관리자에게 「권한 관리」에서 홍보팀장 연결을 요청하세요.' : GEN ? '관리자 → 수당 관리 → 총국장 수당관리에서 총국장 직할 지국을 정해 주세요.' : '관리자에게 「권한 관리」에서 소속 지국 지정을 요청하세요.'}</p></Card></div>);
   // 합계
-  let A = 0, R = 0, M = 0, HC = 0, SQ = 0;
+  let A = 0, R = 0, M = 0, HC = 0, SQ = 0, DQ = 0;
   allCases.forEach((c) => { const u = unit(c, pm); const n = Number(c.headcount) || 0; HC += n; A += u.a * n; R += u.r * n; M += u.m * n; });
-  L.singles.forEach((n, pid) => { const p = pm.get(pid) || {}; SQ += n; A += n * (p['판매가'] || 0); R += n * (p['인정액'] || 0); M += n * (p['수당'] || 0); });
+  L.singles.forEach((n, pid) => { const p = pm.get(pid) || {}; if (n > 0) SQ += n; else DQ -= n; A += n * (p['판매가'] || 0); R += n * (p['인정액'] || 0); M += n * (p['수당'] || 0); });
   const ranges = applicantRanges(allCases); const cq = caseQty(allCases);
   const modeText = lock ? ym + ' 매출은 ' + lock.ym + ' 월급 마감으로 고칠 수 없습니다 (보기만 가능) · '
     : entry ? '등록된 매출을 수정합니다' + (entry.updated_by ? ' (마지막 수정: ' + entry.updated_by + ' ' + (entry.updated_at || '') + ')' : '') + ' · ' : (branch && (!isP || promoter) ? '아직 등록되지 않은 달입니다 · Case를 추가해 저장하세요 · ' : '');
@@ -128,7 +131,7 @@ export default function SalesIn({ mode, general }) {
             <Field label="비고" className="wide"><input className="in" type="text" maxLength={200} aria-label="비고" value={L.memo} onChange={(e) => dirty({ memo: e.target.value })} /></Field>
           </div>
           {isP && branch && !pc.length && <p className="status" data-kind="warn">이 지국에 등록된 홍보팀장이 없습니다</p>}
-          <dl className="sum">{[['Case', won(allCases.length) + '개 · 등록자 ' + won(HC) + '명'], ['개별 판매', won(SQ) + '건'], ['매출 합계 (판매가)', won(A) + '원'], ['인정액 합계', won(R) + '원'], ['수당 합계', won(M) + '원'], ['지급', ym ? ymText(addYm(ym, 2)) + ' 월급' : '—']].map(([k, v]) => [<dt key={k}>{k}</dt>, <dd key={k + 'v'}>{v}</dd>])}</dl>
+          <dl className="sum">{[['Case', won(allCases.length) + '개 · 등록자 ' + won(HC) + '명'], ['개별 판매', won(SQ) + '건' + (DQ ? ' · 미승인 차감 ' + won(DQ) + '건' : '')], ['매출 합계 (판매가)', won(A) + '원'], ['인정액 합계', won(R) + '원'], ['수당 합계', won(M) + '원'], ['지급', ym ? ymText(addYm(ym, 2)) + ' 월급' : '—']].map(([k, v]) => [<dt key={k}>{k}</dt>, <dd key={k + 'v'}>{v}</dd>])}</dl>
         </div>
         <div className="card"><Side isP={isP} GEN={GEN} ym={ym} branch={branch} promoter={promoter} onPick={(k) => changeHead(() => setYm(k))} /></div>
       </section>
@@ -171,23 +174,25 @@ export default function SalesIn({ mode, general }) {
       </Card>
       <Card>
         <h2>상품별 건수</h2>
-        <p className="note">합계 건수 = Case 건수 + 따로 판 건수 · 「수정」으로 합계 건수를 바꾸고 「저장」하면 그 상품만 바로 저장됩니다 · Case 건수보다 적게는 줄일 수 없습니다 (줄이려면 「저장된 Case 수정」에서 등록자 수를 줄이세요)</p>
+        <p className="note">합계 건수 = Case 건수 + 따로 판 건수 · 「수정」으로 합계 건수를 바꾸고 「저장」하면 그 상품만 바로 저장됩니다 · Case 건수보다 적게 저장하면 그 차이는 「미승인 차감」으로 남습니다 (본사 미승인 등 · 사유를 적어 두세요) · 등록자 자체가 빠졌다면 「저장된 Case 수정」에서 등록자 수를 줄이세요</p>
         <div className="tbl"><table className="items">
           <thead><tr>{['구분', '업체', '강의명', '판매가', 'Case 건수', '합계 건수', '매출 소계', '인정액 소계', '수당 소계', ''].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
           <tbody>{products().map((p) => {
             const a = cq.get(p.id) || 0; const b = L.singles.get(p.id) || 0; const ed = L.editing.has(p.id);
-            const n = ed ? Math.max(a, L.editing.get(p.id)) : a + b;
+            const n = ed ? Math.max(0, L.editing.get(p.id)) : Math.max(0, a + b); const dq = Math.max(0, a - n); const noteV = L.enote.has(p.id) ? L.enote.get(p.id) : (L.notes.get(p.id) || '');
             T.cq += a; T.n += n; T.a += n * (p['판매가'] || 0); T.r += n * (p['인정액'] || 0); T.m += n * (p['수당'] || 0);
-            const setN = (v) => { v = Math.max(a, Math.min(9999, Math.floor(Number(v) || 0))); const m = new Map(L.editing); m.set(p.id, v); setL((x) => ({ ...x, editing: m })); };
+            const setN = (v) => { v = Math.max(0, Math.min(9999, Math.floor(Number(v) || 0))); const m = new Map(L.editing); m.set(p.id, v); setL((x) => ({ ...x, editing: m })); };
             return (
               <tr key={p.id} className={(n ? 'on' : '') + (ed ? ' editing' : '')}>
                 <td>{cn.get(p.categoryId) || ''}</td><td>{vn.get(p.vendorId) || ''}</td><td className="title">{p['강의명'] || ''}</td><td className="num">{won(p['판매가'] || 0)}</td><td className={'num' + (a ? '' : ' muted')}>{won(a)}</td>
-                <td className="num">{ed ? (<><div className="stepper"><Btn kind="icon" aria-label={(p['강의명'] || '') + ' 1건 빼기'} disabled={n <= a} onClick={() => setN(n - 1)}>−</Btn>
-                  <input className="in num tq" type="number" min={a} inputMode="numeric" aria-label={(p['강의명'] || '') + ' 합계 건수'} value={String(n)} onChange={(e) => { if (e.target.value !== '') setN(e.target.value); }} />
-                  <Btn kind="icon" aria-label={(p['강의명'] || '') + ' 1건 더하기'} onClick={() => setN(n + 1)}>+</Btn></div>{a > 0 && <div className="note">Case {won(a)}건 포함 · 최소 {won(a)}건</div>}</>) : won(n)}</td>
+                <td className="num">{ed ? (<><div className="stepper"><Btn kind="icon" aria-label={(p['강의명'] || '') + ' 1건 빼기'} disabled={n <= 0} onClick={() => setN(n - 1)}>−</Btn>
+                  <input className="in num tq" type="number" min={0} inputMode="numeric" aria-label={(p['강의명'] || '') + ' 합계 건수'} value={String(n)} onChange={(e) => { if (e.target.value !== '') setN(e.target.value); }} />
+                  <Btn kind="icon" aria-label={(p['강의명'] || '') + ' 1건 더하기'} onClick={() => setN(n + 1)}>+</Btn></div>{a > 0 && (dq ? <div className="note deduct">{'Case ' + won(a) + '건 중 미승인 차감 ' + won(dq) + '건'}</div> : <div className="note">Case {won(a)}건 포함</div>)}
+                  {dq > 0 && <input className="in deduct-note" type="text" maxLength={200} placeholder="차감 사유 (예: 본사 미승인 · 서류 미비)" aria-label={(p['강의명'] || '') + ' 차감 사유'} value={noteV} onChange={(e) => { const m = new Map(L.enote); m.set(p.id, e.target.value); setL((x) => ({ ...x, enote: m })); }} />}</>)
+                  : <>{won(n)}{dq > 0 && <div className="note deduct" title={noteV || undefined}>{'미승인 차감 ' + won(dq) + '건' + (noteV ? ' · ' + noteV : '')}</div>}</>}</td>
                 <td className="num">{won(n * (p['판매가'] || 0))}</td><td className="num">{won(n * (p['인정액'] || 0))}</td><td className="num">{won(n * (p['수당'] || 0))}</td>
-                <td className="act">{ed ? <><Btn kind="primary sm" onClick={() => saveItem(p, a)}>저장</Btn><Btn kind="sm" onClick={() => { const m = new Map(L.editing); m.delete(p.id); setL((x) => ({ ...x, editing: m })); }}>취소</Btn></>
-                  : <Btn kind="sm" onClick={() => { const m = new Map(L.editing); m.set(p.id, a + b); setL((x) => ({ ...x, editing: m })); }}>수정</Btn>}</td>
+                <td className="act">{ed ? <><Btn kind="primary sm" onClick={() => saveItem(p, a)}>저장</Btn><Btn kind="sm" onClick={() => { const m = new Map(L.editing); m.delete(p.id); const en = new Map(L.enote); en.delete(p.id); setL((x) => ({ ...x, editing: m, enote: en })); }}>취소</Btn></>
+                  : <Btn kind="sm" onClick={() => { const m = new Map(L.editing); m.set(p.id, Math.max(0, a + b)); setL((x) => ({ ...x, editing: m })); }}>수정</Btn>}</td>
               </tr>);
           })}</tbody>
           <tfoot><tr><td colSpan={4}>합계</td><td className="num">{won(T.cq)}</td><td className="num">{won(T.n)}</td><td className="num">{won(T.a)}</td><td className="num">{won(T.r)}</td><td className="num">{won(T.m)}</td><td /></tr></tfoot>

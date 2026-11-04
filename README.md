@@ -52,4 +52,3 @@
 - 개발 화면 맨 위에 노란 「개발 서버 · 테스트 DB」 띠가 보임
 - 순서: zip을 `dev` 브랜치에 올림 → 개발 주소에서 테스트 → GitHub Pull request(`dev` → `main`) Merge → 운영 자동 배포
 - DB 구조를 바꾸는 SQL은 개발 DB에 먼저 실행해 테스트한 뒤 운영 DB에 실행
-
