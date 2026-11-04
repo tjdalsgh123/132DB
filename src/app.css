@@ -153,6 +153,8 @@ select.in { padding-right: 4rem; }
 .stepper .field-l { width: 100%; }
 .case-foot .stepper .btn.icon { width: 4.8rem; min-height: 4.8rem; }
 .case-foot .stepper .in.num { min-height: 4.8rem; }
+.note.deduct { color: var(--bad); font-weight: 700; }
+.in.deduct-note { display: block; width: 100%; min-width: 16rem; margin-top: var(--sp-2); }
 .case-tot { text-align: right; font-variant-numeric: tabular-nums; } .case-sum { font-weight: 700; }
 
 /* ---------- 표 (업무용: 15px · 40px 버튼) ---------- */

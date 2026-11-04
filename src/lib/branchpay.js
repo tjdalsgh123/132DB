@@ -134,14 +134,20 @@ export const ownGroups = (p, kym, fym) => {
   const pm = pmap(); const groups = [];
   D.entries.filter((e) => e.ym === kym && e.branch_id === p.branch && !e.promoter_id).forEach((e) => {
     // 최소 단위 = 신청자 1명 (그 사람이 듣는 강의 묶음 · 강의별로 쪼갤 수 없음)
-    const cs = casesOf(e); const rg = applicantRanges(cs);
-    cs.forEach((c, ci) => {
-      const n = Math.max(0, rg[ci].to - rg[ci].from + 1); if (!n) return;
-      const own = {}; let sales = 0, rec = 0, com = 0;
-      c.items.forEach((it) => { const cat = ((pm.get(it.pid) || {}).categoryId) || '_none'; const t = own[cat] || (own[cat] = zero()); t.sales += it.price; t.rec += it.rec; t.com += it.com; t.cnt += 1; sales += it.price; rec += it.rec; com += it.com; });
-      groups.push({ kind: 'case', caseKey: c.key, name: c.name, titles: c.items.map((x) => x.title), pre: String(c.key || '').replace(/Case-\d+$/, ''), from: rg[ci].from, n, own, free: null, sales, rec, com });
-    });
-    singlesOf(e).forEach((q, pid) => { const x = pm.get(pid) || {}; const v = { sales: x['판매가'] || 0, rec: x['인정액'] || 0, com: x['수당'] || 0, cnt: 1 };
+    const cs = casesOf(e); const rg = applicantRanges(cs); const sg = singlesOf(e);
+    // 미승인 차감(따로 판 건수 음수): 그 상품이 든 Case의 뒤쪽 신청자부터 그 상품을 뺀 묶음으로 나눔
+    const cut = new Map(); sg.forEach((q, pid) => { if (q < 0) cut.set(pid, -q); });
+    const mk = (c, items, from, n, tag) => { const own = {}; let sales = 0, rec = 0, com = 0;
+      items.forEach((it) => { const cat = ((pm.get(it.pid) || {}).categoryId) || '_none'; const t = own[cat] || (own[cat] = zero()); t.sales += it.price; t.rec += it.rec; t.com += it.com; t.cnt += 1; sales += it.price; rec += it.rec; com += it.com; });
+      return { kind: 'case', caseKey: c.key, name: c.name + (tag || ''), titles: items.map((x) => x.title), pre: String(c.key || '').replace(/Case-\d+$/, ''), from, n, own, free: null, sales, rec, com }; };
+    const out = [];
+    cs.forEach((c, ci) => { const n = Math.max(0, rg[ci].to - rg[ci].from + 1); if (n) out.push({ c, items: c.items.slice(), from: rg[ci].from, n, tag: '' }); });
+    cut.forEach((d0, pid) => { let d = d0;
+      for (let k = out.length - 1; k >= 0 && d > 0; k--) { const g = out[k]; const at = g.items.findIndex((it) => it.pid === pid); if (at < 0 || !g.n) continue;
+        const m = Math.min(d, g.n); d -= m; g.n -= m; const items = g.items.slice(); items.splice(at, 1);
+        out.splice(k + 1, 0, { c: g.c, items, from: g.from + g.n, n: m, tag: (g.tag ? g.tag.slice(0, -1) + ', ' : ' (') + ((pm.get(pid) || {})['강의명'] || pid) + ' 미승인)' }); } });
+    out.forEach((g) => { if (g.n) groups.push(mk(g.c, g.items, g.from, g.n, g.tag)); });
+    sg.forEach((q, pid) => { if (q <= 0) return; const x = pm.get(pid) || {}; const v = { sales: x['판매가'] || 0, rec: x['인정액'] || 0, com: x['수당'] || 0, cnt: 1 };
       groups.push({ kind: 'single', name: x['강의명'] || pid, titles: [x['강의명'] || pid], n: q, own: { [x.categoryId || '_none']: v }, free: null, sales: v.sales, rec: v.rec, com: v.com }); });
   });
   D.free.filter((f) => f.ym === fym && f.branch_id === p.branch && !f.promoter_id).forEach((f) => groups.push({ kind: 'free', key: f.key, name: f.school, titles: ['자율학기제'], n: 1, own: {}, free: { sales: f.amount, rec: f.recognized, com: f.commission, cnt: 1 }, sales: f.amount, rec: f.recognized, com: f.commission }));

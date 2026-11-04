@@ -111,8 +111,10 @@ export const findEntry = (branch, promoter, ym) => D.entries.find((e) => e.branc
 const noOf = (key, i) => { const m = /Case-(\d+)$/.exec(key || ''); return m ? Number(m[1]) : i + 1; };
 // 저장된 Case: [{key, no, name, headcount, memo, items:[{pid,title,price,rec,com}]}]
 export const casesOf = (e) => (e ? (D.cases[String(e.entry_id)] || []).map(([key, nm, hc, me, its], i) => ({ key, no: noOf(key, i), name: nm || '', headcount: +hc || 0, memo: me || '', items: (its || []).map(([pid, t, pr, rc, cm]) => ({ pid, title: t, price: +pr || 0, rec: +rc || 0, com: +cm || 0 })) })) : []);
-// 따로 판 건수: Map(pid → qty)
-export const singlesOf = (e) => { const m = new Map(); if (e) (D.items[String(e.entry_id)] || []).forEach(([pid, , sq]) => { if (+sq > 0) m.set(pid, +sq); }); return m; };
+// 따로 판 건수: Map(pid → qty) · 음수 = 미승인 차감 (Case에 든 상품을 본사 미승인으로 뺌)
+export const singlesOf = (e) => { const m = new Map(); if (e) (D.items[String(e.entry_id)] || []).forEach(([pid, , sq]) => { if (+sq) m.set(pid, +sq); }); return m; };
+// 미승인 차감 사유: Map(pid → 사유) · 따로 판 건수가 음수(차감)인 상품
+export const singleNotesOf = (e) => { const m = new Map(); if (e) (D.items[String(e.entry_id)] || []).forEach(([pid, , sq, nt]) => { if (+sq < 0) m.set(pid, nt || ''); }); return m; };
 // 상품별 합계 건수
 export const qtyOf = (e) => { const m = new Map(); if (e) (D.items[String(e.entry_id)] || []).forEach(([pid, q]) => m.set(pid, (m.get(pid) || 0) + (+q || 0))); return m; };
 // 신청자 번호: Case 순서대로 등록자 수만큼 1부터
