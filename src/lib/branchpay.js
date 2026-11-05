@@ -9,7 +9,23 @@ const rdown10 = (n) => Math.floor(n / 10) * 10;
 export const pct = (r) => (r == null || r === '' ? '' : (Math.round(Number(r) * 10000) / 100) + '%');
 export const manwon = (b) => (b % 10000 === 0 ? won(b / 10000) + '만원' : won(b) + '원');
 
-export const TYPES = [['commission', '수당표 기준', '상품별 수당표의 1건 수당 × 건수 합계'], ['rate', '비율', '기준 금액 × 비율'], ['tier', '구간표', '기준 금액이 구간 이상이면 그 구간 금액'], ['fixed', '월 고정액', '매월 같은 금액']];
+export const TYPES = [['commission', '수당표 기준', '상품별 수당표의 1건 수당 × 건수 합계'], ['rate', '비율', '기준 금액 × 비율'], ['tier', '구간표', '기준 금액이 구간 이상이면 그 구간 금액'], ['fixed', '월 고정액', '매월 같은 금액'],
+  ['grade', '직급·등급표', '사람마다 정한 직급·등급의 표 금액 (최소 실적 이상일 때)'], ['split', '분화 지국 비율', '분화한 지국의 판매액 × 비율 (분화 후 6개월)']];
+// 등급별수당 (2026 총국장 ROLL 문서 「지국장,총국장 등급별수당」) · 등급: A(1~2구간) B(3~4) C(5~6) D 신임(7~8) E(9~10) F
+export const GRADES = [['A', 'A등급 (1~2구간)'], ['B', 'B등급 (3~4구간)'], ['C', 'C등급 (5~6구간)'], ['D', 'D등급 · 신임 (7~8구간)'], ['E', 'E등급 (9~10구간)'], ['F', 'F등급']];
+export const GRADE_DEFAULT = 'D';
+const M = (a, b, c, d, e, f) => ({ A: a * 10000, B: b * 10000, C: c * 10000, D: d * 10000, E: e * 10000, F: f * 10000 });
+export const GRADE_TABLE = {
+  branch: { '3급': M(90, 80, 70, 60, 50, 40), '2급': M(100, 90, 80, 70, 60, 50), '1급': M(110, 100, 90, 80, 70, 60), '선임': M(130, 120, 100, 90, 80, 70) },
+  general: { '3급': M(110, 90, 80, 70, 60, 50), '2급': M(120, 100, 90, 80, 70, 60), '1급': M(130, 110, 100, 90, 80, 70) },
+};
+export const RANKS = (kind) => Object.keys(GRADE_TABLE[kind === 'general' ? 'general' : 'branch']);
+export const SPLIT_MONTHS = 6;
+// 사람별 직급·등급 (settings.grades = { 'b:지국ID' | 'g:지국ID': [{ from: 월급월, rank, grade }] }) · 월급월 기준 가장 최근 것
+export const gradeHist = (key) => { const g = (D.settings && D.settings.grades) || {}; return (Array.isArray(g[key]) ? g[key] : []).filter((x) => x && /^\d{4}-\d{2}$/.test(x.from || '')).slice().sort((a, b) => (a.from < b.from ? -1 : 1)); };
+export const gradeOf = (p, ym) => { const kind = p.general ? 'general' : 'branch'; const h = gradeHist(p.key).filter((x) => x.from <= ym).pop();
+  const ranks = RANKS(kind); return h ? { rank: ranks.includes(h.rank) ? h.rank : ranks[0], grade: GRADES.some((g) => g[0] === h.grade) ? h.grade : GRADE_DEFAULT, from: h.from, set: true } : { rank: ranks[0], grade: GRADE_DEFAULT, from: '', set: false }; };
+export const gradeName = (g) => (g === 'D' ? 'D등급(신임)' : g + '등급');
 export const MEASURES = [['sales', '판매액'], ['rec', '인정액'], ['com', '수당'], ['cnt', '건수']];
 export const SCOPES = [['own', '지국장 직할 매출'], ['branch', '지국 전체 매출 (직할 + 소속 홍보팀장)']];
 export const typeName = (t) => (TYPES.find((x) => x[0] === t) || [t, t])[1];
@@ -30,18 +46,32 @@ export const DEFAULT = {
     { id: 'free_inc', name: '자유학기제 인센티브', type: 'rate', cats: [], free: true, scope: 'branch', measure: 'sales', rate: 0.07, memo: '지국 전체 자율학기제 판매액의 7%', active: true },
     { id: 'etc_comm', name: '기타 판매 수당', type: 'commission', cats: ['_rest'], free: false, scope: 'own', measure: 'com', memo: '판매 수당표 기준 (KDC·재직자 외 구분)', active: true },
     { id: 'etc_inc', name: '기타 판매 인센티브', type: 'rate', cats: ['_rest'], free: false, scope: 'branch', measure: 'sales', rate: 0.04, memo: '지국 전체 기타 판매액의 4%', active: true },
-    { id: 'chief', name: '국장수당', type: 'tier', cats: ['*'], free: true, scope: 'branch', measure: 'rec', tiers: [T(4000000, 600000), T(8000000, 700000), T(15000000, 800000), T(20000000, 900000)], memo: '판매인정액(매출귀속) 기준 · 달성한 가장 높은 구간 지급', active: true },
+    { id: 'chief', name: '국장수당 (등급별)', type: 'grade', cats: ['*'], free: true, scope: 'branch', measure: 'rec', min: 4000000, table: GRADE_TABLE.branch, memo: '직급·등급표 금액 · 지국 전체 판매인정액 400만원 이상일 때 지급', active: true },
     { id: 'org', name: '조직회원운영비', type: 'tier', cats: ['c_kdc'], free: false, scope: 'branch', measure: 'sales', tiers: [T(10000000, 100000), T(12000000, 200000), T(14000000, 300000), T(16000000, 400000), T(18000000, 500000), T(20000000, 600000), T(22000000, 700000), T(24000000, 800000), T(27000000, 900000), T(30000000, 1000000), T(35000000, 1100000), T(40000000, 1200000), T(45000000, 1300000), T(50000000, 1500000)], memo: 'KDC 입금액(지국 전체 판매액) 기준 · 달성 시 자동 지급', active: true },
   ],
   promo: { name: 'K-디지털 시책', cats: ['c_kdc'], scope: 'branch', measure: 'cnt', tiers: [T(10, 50000), T(20, 100000), T(30, 200000), T(50, 300000), T(60, 400000), T(70, 500000), T(100, 700000), T(150, 1000000)], months: {}, memo: '매출 월별로 켜고, 그 달에 적용하지 않는 구간은 끕니다' },
   rds_cap: 3000000,
 };
 // 지국장 기준을 총국장용으로 복사 (설명 문구의 지국장·지국 전체 → 총국장·총국 전체)
-export const generalCopy = (c) => { const x = JSON.parse(JSON.stringify(c)); const fix = (t) => String(t || '').replace(/지국 전체/g, '총국 전체').replace(/지국장/g, '총국장'); (x.items || []).forEach((it) => { it.memo = fix(it.memo); }); if (x.promo) x.promo.memo = fix(x.promo.memo); return x; };
-export const config = (kind = 'branch') => { if (kind === 'general') { const g = D.settings && D.settings.general_fee; if (!(g && Array.isArray(g.items))) return generalCopy(config('branch')); return { ...DEFAULT, ...g, promo: { ...DEFAULT.promo, ...(g.promo || {}) } }; } const s = D.settings && D.settings.branch_fee; return s && Array.isArray(s.items) ? { ...DEFAULT, ...s, promo: { ...DEFAULT.promo, ...(s.promo || {}) } } : JSON.parse(JSON.stringify(DEFAULT)); };
+// 총국장수당 (문서 「총국장수당」): 직할조직 400만 · 총국 2,000만 이상이면 매출수당(기본금 70만 + 총국 판매·회비 1% + 자유학기제 3%)·분화수당(분화 후 6개월 자조직 판매 1%) 전체 지급
+export const GENERAL_ITEMS = () => [
+  { id: 'g_sales_base', name: '총국 매출수당 (기본금)', type: 'fixed', value: 700000, gated: true, memo: '지급 조건 달성 시 기본금', active: true },
+  { id: 'g_sales_rate', name: '총국 매출수당 (판매·회비 1%)', type: 'rate', cats: ['*'], free: false, scope: 'branch', measure: 'sales', rate: 0.01, dues: true, gated: true, memo: '총국 전체 판매액 + 회비의 1%', active: true },
+  { id: 'g_sales_free', name: '총국 매출수당 (자유학기제 3%)', type: 'rate', cats: [], free: true, scope: 'branch', measure: 'sales', rate: 0.03, gated: true, memo: '총국 전체 자유학기제 판매액의 3%', active: true },
+  { id: 'g_split', name: '총국 분화수당', type: 'split', cats: ['*'], free: false, measure: 'sales', rate: 0.01, gated: true, memo: '분화한 자조직 판매액의 1% (분화 후 6개월)', active: true },
+];
+export const GENERAL_GATE = { own: 4000000, all: 20000000 };
+export const generalCopy = (c) => { const x = JSON.parse(JSON.stringify(c)); const fix = (t) => String(t || '').replace(/지국 전체/g, '총국 전체').replace(/지국장/g, '총국장'); (x.items || []).forEach((it) => { it.memo = fix(it.memo); if (it.type === 'grade') { it.table = JSON.parse(JSON.stringify(GRADE_TABLE.general)); it.scope = 'own'; it.memo = '직급·등급표 금액 · 총국장 직할 판매인정액 400만원 이상일 때 지급'; } }); if (x.promo) x.promo.memo = fix(x.promo.memo);
+  if (!(x.items || []).some((it) => it.type === 'split' || it.gated)) x.items = (x.items || []).concat(GENERAL_ITEMS()); x.gate = { ...GENERAL_GATE, ...(x.gate || {}) }; x.dues = x.dues || {}; x.splits = x.splits || []; return x; };
+// 예전 국장수당(구간표) → 등급별 국장수당으로 바꿈 (저장된 설정에도 적용 · 최소 실적 = 가장 낮은 구간 기준액)
+const upgrade = (c, kind) => { (c.items || []).forEach((it, i) => { if (it.id === 'chief' && it.type === 'tier') { const lo = (it.tiers || []).map((t) => Number(t.base)).filter((b) => b > 0).sort((a, b) => a - b)[0] || 4000000;
+  c.items[i] = { ...it, name: '국장수당 (등급별)', type: 'grade', min: lo, table: JSON.parse(JSON.stringify(GRADE_TABLE[kind])), memo: '직급·등급표 금액 · ' + (kind === 'general' ? '총국장 직할' : '지국 전체') + ' 판매인정액 ' + manwon(lo) + ' 이상일 때 지급', ...(kind === 'general' ? { scope: 'own' } : {}) }; delete c.items[i].tiers; } });
+  if (kind === 'general') { c.gate = { ...GENERAL_GATE, ...(c.gate || {}) }; c.dues = c.dues || {}; c.splits = Array.isArray(c.splits) ? c.splits : []; } return c; };
+export const config = (kind = 'branch') => { if (kind === 'general') { const g = D.settings && D.settings.general_fee; if (!(g && Array.isArray(g.items))) return generalCopy(config('branch')); return upgrade(JSON.parse(JSON.stringify({ ...DEFAULT, ...g, promo: { ...DEFAULT.promo, ...(g.promo || {}) } })), 'general'); } const s = D.settings && D.settings.branch_fee; return upgrade(s && Array.isArray(s.items) ? JSON.parse(JSON.stringify({ ...DEFAULT, ...s, promo: { ...DEFAULT.promo, ...(s.promo || {}) } })) : JSON.parse(JSON.stringify(DEFAULT)), 'branch'); };
 
 // 구분 선택 풀기: '*' = 전체, '_rest' = 다른 항목에 지정되지 않은 나머지 구분
-const catIds = () => (D.fee.categories || []).map((c) => c.id).concat(['_none']);
+// '_etc' = 기타 상품 판매 등록(GAAT·AICC 등) · 「그 밖의 구분」과 「전체」에 들어감
+const catIds = () => (D.fee.categories || []).map((c) => c.id).concat(['_none', '_etc']);
 const resolveCats = (cats, cfg) => {
   if (!cats || !cats.length) return [];
   if (cats.includes('*')) return catIds();
@@ -54,7 +84,7 @@ export const catLabel = (cats) => {
   if (!cats || !cats.length) return '';
   if (cats.includes('*')) return '모든 상품';
   const cn = new Map((D.fee.categories || []).map((c) => [c.id, c.name]));
-  return cats.map((c) => (c === '_rest' ? '그 밖의 구분' : cn.get(c) || c)).join('·');
+  return cats.map((c) => (c === '_rest' ? '그 밖의 구분 (기타 상품 포함)' : c === '_etc' ? '기타 상품' : cn.get(c) || c)).join('·');
 };
 export const srcLabel = (it) => [catLabel(it.cats), it.free ? '자율학기제' : ''].filter(Boolean).join(' + ');
 
@@ -66,13 +96,18 @@ export const perfB = (p, ym) => {
   const ew = p.general ? D.entries.filter((e) => e.ym === kym) : es; const fw = p.general ? D.free.filter((f) => f.ym === fym) : fs; // 총국장: 모든 지국
   const agg = (list) => { const m = {}; list.forEach((e) => Object.entries(catsOf(e)).forEach(([c, v]) => { const t = m[c] || (m[c] = { sales: 0, rec: 0, com: 0, cnt: 0 }); t.sales += v.sales; t.rec += v.rec; t.com += v.com; t.cnt += v.cnt; })); return m; };
   const fa = (list) => ({ sales: sum(list, 'amount'), rec: sum(list, 'recognized'), com: sum(list, 'commission'), cnt: list.length });
+  // 기타 상품 판매(매출 월 + 1개월) → 구분 '_etc'
+  const xs = (D.etc || []).filter((x) => x.ym === fym && x.branch_id === p.branch); const xw = p.general ? (D.etc || []).filter((x) => x.ym === fym) : xs;
+  const addEtc = (m, list) => { if (!list.length) return m; const t = m._etc || (m._etc = { sales: 0, rec: 0, com: 0, cnt: 0 }); list.forEach((x) => { t.sales += x.amount; t.rec += x.recognized; t.com += x.commission; t.cnt += x.qty; }); return m; };
+  const xo = xs.filter((x) => !x.promoter_id); const xa = sum(xw, 'amount'), xr = sum(xw, 'recognized');
   return {
     kdc_ym: kym, free_ym: fym,
-    own: agg(es.filter((e) => !e.promoter_id)), branch: agg(ew),
+    own: addEtc(agg(es.filter((e) => !e.promoter_id)), xo), branch: addEtc(agg(ew), xw), etc_ym: fym,
     ownFree: fa(fs.filter((f) => !f.promoter_id)), branchFree: fa(fw),
-    sales: sum(ew, 'amount') + sum(fw, 'amount'), rec: sum(ew, 'recognized') + sum(fw, 'recognized'),
-    own_sales: sum(es.filter((e) => !e.promoter_id), 'amount') + sum(fs.filter((f) => !f.promoter_id), 'amount'),
-    cnt: sum(ew, 'cnt'), registered: ew.length > 0 || fw.length > 0,
+    sales: sum(ew, 'amount') + sum(fw, 'amount') + xa, rec: sum(ew, 'recognized') + sum(fw, 'recognized') + xr,
+    own_sales: sum(es.filter((e) => !e.promoter_id), 'amount') + sum(fs.filter((f) => !f.promoter_id), 'amount') + sum(xo, 'amount'),
+    cnt: sum(ew, 'cnt'), registered: ew.length > 0 || fw.length > 0 || xw.length > 0,
+    org_rec: sum(es, 'recognized') + sum(fs, 'recognized') + sum(xs, 'recognized'), all_rec: sum(ew, 'recognized') + sum(fw, 'recognized') + xr, // 직할 조직(이 지국 전체) · 총국 전체 인정액
   };
 };
 const valueOf = (it, pf, cfg, share = 1) => {
@@ -82,24 +117,38 @@ const valueOf = (it, pf, cfg, share = 1) => {
   if (it.free) v += (it.scope === 'branch' ? pf.branchFree : pf.ownFree)[m] || 0;
   return it.scope === 'branch' ? v : Math.round(v * share);
 };
-const monthsText = (it, pf) => { const a = []; if ((it.cats || []).length) a.push(pf.kdc_ym); if (it.free) a.push('자율 ' + pf.free_ym); return a.join(' · ') + ' 매출'; };
+const monthsText = (it, pf, cfg) => { const a = []; const cs = (it.cats || []); if (cs.some((c) => c !== '_etc')) a.push(pf.kdc_ym); if (cs.includes('*') || cs.includes('_etc') || (cs.includes('_rest') && cfg && resolveCats(cs, cfg).includes('_etc'))) a.push('기타 상품 ' + pf.free_ym); if (it.free) a.push('자율 ' + pf.free_ym); return a.join(' · ') + ' 매출'; };
 // mg: 구간 여유액 (계정 할당 최적화에서 기준액 + 여유액 이상이어야 그 구간으로 봄)
 const tierHit = (tiers, v, mg = 0) => (tiers || []).filter((t) => t && t.base != null).slice().sort((a, b) => a.base - b.base).filter((t) => v >= Number(t.base) + (Number(t.base) > 0 ? mg : 0)).pop() || null;
 
+// 총국장수당 지급 조건: 직할 조직(총국장 직할 지국 전체) 인정액 · 총국 전체 인정액이 기준 이상
+export const gateOf = (cfg, pf) => { const g = { ...GENERAL_GATE, ...(cfg.gate || {}) }; const o = pf.org_rec || 0, a = pf.all_rec || 0; const ok = o >= (Number(g.own) || 0) && a >= (Number(g.all) || 0);
+  return { ok, text: '직할 조직 인정액 ' + won(o) + '원 / ' + manwon(Number(g.own) || 0) + ' · 총국 인정액 ' + won(a) + '원 / ' + manwon(Number(g.all) || 0) }; };
+// 분화수당: 분화월(매출 월 기준)부터 6개월 안인 지국의 판매액
+const splitValue = (it, pf, cfg) => { const list = []; (cfg.splits || []).forEach((s) => { if (!s || !s.branch || !/^\d{4}-\d{2}$/.test(s.ym || '')) return; if (!(s.ym <= pf.kdc_ym && pf.kdc_ym <= addYm(s.ym, SPLIT_MONTHS - 1))) return;
+  let v = 0; const cats = resolveCats(it.cats, cfg); D.entries.filter((e) => e.ym === pf.kdc_ym && e.branch_id === s.branch).forEach((e) => Object.entries(catsOf(e)).forEach(([c, x]) => { if (cats.includes(c)) v += x[it.measure || 'sales'] || 0; }));
+  if (it.free) v += sum(D.free.filter((f) => f.ym === pf.free_ym && f.branch_id === s.branch), (it.measure || 'sales') === 'rec' ? 'recognized' : 'amount');
+  list.push({ name: (D.branches.find((b) => b.id === s.branch) || {}).name || s.branch, ym: s.ym, v }); }); return { v: sum(list, 'v'), list }; };
 // 시책: 매출 월(kym)에 켜진 경우만 · 그 달에 끈 구간은 제외
 export const promoMonth = (cfg, kym) => { const m = (cfg.promo.months || {})[kym]; return m && m.on ? m : null; };
 // opt.share: 직할 매출 중 이 계정 몫 · opt.only: 'own'(직할 항목만) / 'branch'(지국 전체 항목·시책만)
 const calcRaw = (p, ym, cfg, opt = {}) => {
   const pf = opt.pf || perfB(p, ym); const lines = []; const cf = p.general ? true : chiefFree(p.branch); const K = p.general ? 'general' : 'branch'; const share = opt.share == null ? 1 : opt.share;
+  const gate = p.general ? gateOf(cfg, pf) : null;
   cfg.items.filter((it) => it.active !== false && (!opt.only || (opt.only === 'branch') === (it.scope === 'branch'))).forEach((it) => {
     const v = valueOf(it, pf, cfg, share);
     // 자율학기제만 보는 항목: 자율학기제를 안 하는 지국장·지국이면 표시하지 않음
     if (it.free && !(it.cats || []).length && !v && !(it.scope === 'own' ? cf : p.general || branchFree(p.branch))) return; let amount = 0, how = '';
     const what = scopeName(it.scope, K) + ' ' + srcLabel(it) + ' ' + measureName(it.type === 'commission' ? 'com' : it.measure);
-    if (it.type === 'commission') { amount = Math.round(v); how = monthsText(it, pf) + ' · ' + scopeName(it.scope, K) + ' ' + srcLabel(it) + ' 수당표 합계'; }
-    else if (it.type === 'rate') { amount = Math.round(v * (Number(it.rate) || 0)); how = monthsText(it, pf) + ' · ' + what + ' ' + won(v) + (it.measure === 'cnt' ? '건' : '원') + ' × ' + pct(it.rate); }
-    else if (it.type === 'tier') { const t = tierHit(it.tiers, v, it.measure === 'cnt' ? 0 : pf.tierMargin || 0); amount = t ? (t.rate != null && t.rate !== '' ? Math.round(v * Number(t.rate)) : Number(t.amount) || 0) : 0; how = monthsText(it, pf) + ' · ' + what + ' ' + won(v) + (it.measure === 'cnt' ? '건' : '원') + ' → ' + (t ? (it.measure === 'cnt' ? won(t.base) + '건' : manwon(Number(t.base))) + ' 이상 구간' : '기준 미달'); }
+    if (it.type === 'commission') { amount = Math.round(v); how = monthsText(it, pf, cfg) + ' · ' + scopeName(it.scope, K) + ' ' + srcLabel(it) + ' 수당표 합계'; }
+    else if (it.type === 'rate') { amount = Math.round(v * (Number(it.rate) || 0)); how = monthsText(it, pf, cfg) + ' · ' + what + ' ' + won(v) + (it.measure === 'cnt' ? '건' : '원') + ' × ' + pct(it.rate); }
+    else if (it.type === 'tier') { const t = tierHit(it.tiers, v, it.measure === 'cnt' ? 0 : pf.tierMargin || 0); amount = t ? (t.rate != null && t.rate !== '' ? Math.round(v * Number(t.rate)) : Number(t.amount) || 0) : 0; how = monthsText(it, pf, cfg) + ' · ' + what + ' ' + won(v) + (it.measure === 'cnt' ? '건' : '원') + ' → ' + (t ? (it.measure === 'cnt' ? won(t.base) + '건' : manwon(Number(t.base))) + ' 이상 구간' : '기준 미달'); }
     else if (it.type === 'fixed') { amount = Math.round(Number(it.value) || 0); how = '월 고정액'; }
+    else if (it.type === 'grade') { const g = gradeOf(p, ym); const amt = Number(((it.table || {})[g.rank] || {})[g.grade]) || 0; const min = Number(it.min) || 0; const ok = v >= min + (min > 0 && it.measure !== 'cnt' ? pf.tierMargin || 0 : 0);
+      amount = ok ? amt : 0; how = monthsText(it, pf, cfg) + ' · ' + what + ' ' + won(v) + '원' + (min ? (ok ? ' ≥ ' : ' < ') + manwon(min) : '') + ' · ' + g.rank + ' ' + gradeName(g.grade) + (g.set ? '' : ' (직급·등급 미지정 → 기본값)') + ' → ' + (ok ? manwon(amt) : '최소 실적 미달'); }
+    else if (it.type === 'split') { const sv = splitValue(it, pf, cfg); amount = Math.round(sv.v * (Number(it.rate) || 0)); how = sv.list.length ? pf.kdc_ym + ' 매출 · 분화 지국 ' + sv.list.map((x) => x.name + ' ' + won(x.v) + '원 (분화 ' + x.ym + ')').join(', ') + ' × ' + pct(it.rate) : '분화 후 ' + SPLIT_MONTHS + '개월 안의 지국 없음'; }
+    if (it.dues && it.type === 'rate') { const du = Number((cfg.dues || {})[pf.kdc_ym]) || 0; if (du) { amount += Math.round(du * (Number(it.rate) || 0)); how += ' · 회비 ' + won(du) + '원 × ' + pct(it.rate); } }
+    if (it.gated && gate && !gate.ok) { amount = 0; how += ' · 지급 조건 미달 (' + gate.text + ')'; }
     lines.push({ it, e: { src: 'default' }, amount, how, value: v });
   });
   const pm = opt.only === 'own' ? null : promoMonth(cfg, pf.kdc_ym);
@@ -150,6 +199,9 @@ export const ownGroups = (p, kym, fym) => {
     sg.forEach((q, pid) => { if (q <= 0) return; const x = pm.get(pid) || {}; const v = { sales: x['판매가'] || 0, rec: x['인정액'] || 0, com: x['수당'] || 0, cnt: 1 };
       groups.push({ kind: 'single', name: x['강의명'] || pid, titles: [x['강의명'] || pid], n: q, own: { [x.categoryId || '_none']: v }, free: null, sales: v.sales, rec: v.rec, com: v.com }); });
   });
+  // 기타 상품 직할 판매 (매출 월 + 1개월): 상품 1개 = 나눌 수 있는 최소 단위
+  (D.etc || []).filter((x) => x.ym === fym && x.branch_id === p.branch && !x.promoter_id).forEach((x) => { const u = { sales: x.price, rec: x.rec, com: x.qty ? Math.round(x.commission / x.qty) : 0, cnt: 1 };
+    groups.push({ kind: 'single', name: '[기타] ' + x.title, titles: [x.title], n: x.qty, own: { _etc: u }, free: null, sales: u.sales, rec: u.rec, com: u.com }); });
   D.free.filter((f) => f.ym === fym && f.branch_id === p.branch && !f.promoter_id).forEach((f) => groups.push({ kind: 'free', key: f.key, name: f.school, titles: ['자율학기제'], n: 1, own: {}, free: { sales: f.amount, rec: f.recognized, com: f.commission, cnt: 1 }, sales: f.amount, rec: f.recognized, com: f.commission }));
   return groups;
 };

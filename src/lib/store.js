@@ -5,7 +5,7 @@ import { busy } from './ui.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
-export const D = { me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
+export const D = { me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], etc: [], etcGroups: [], etcProducts: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
 const listeners = new Set();
 export const onChange = (f) => { listeners.add(f); return () => listeners.delete(f); };
 const emit = () => listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
@@ -21,6 +21,9 @@ export const load = async () => {
   D.free = (D.free || []).map((a) => ({ id: a[0], branch_id: a[1], promoter_id: a[2], ym: a[3], seq: +a[4] || 0, key: a[5], school: a[6] || '', amount: +a[7] || 0, recognized: +a[8] || 0, commission: +a[9] || 0, memo: a[10] || '', updated_by: a[11] || '', updated_at: a[12] || '' }));
   D.fee = D.fee || {};
   try { const x = await rpc('app_pay_extra'); D.ecats = (x && x.cats) || null; D.bfree = (x && x.bfree) || {}; D.chiefs = (x && x.chiefs) || {}; } catch (_) { D.ecats = null; D.bfree = D.bfree || {}; D.chiefs = D.chiefs || {}; }
+  try { const x = await rpc('app_etc_list'); D.etcGroups = (x && x.groups) || []; D.etcProducts = ((x && x.products) || []).map((p) => ({ ...p, list: +p.list || 0, price: +p.price || 0, rec: +p.rec || 0, rate: +p.rate || 0 }));
+    D.etc = ((x && x.sales) || []).map((a) => ({ id: a[0], branch_id: a[1], promoter_id: a[2], ym: a[3], seq: +a[4] || 0, key: a[5], product_id: a[6], group_id: a[7], group_name: a[8] || '', title: a[9] || '', qty: +a[10] || 0, price: +a[11] || 0, rec: +a[12] || 0, rate: +a[13] || 0, amount: +a[14] || 0, recognized: +a[15] || 0, commission: +a[16] || 0, customer: a[17] || '', memo: a[18] || '', updated_by: a[19] || '', updated_at: a[20] || '' })); }
+  catch (_) { D.etcGroups = D.etcGroups || []; D.etcProducts = D.etcProducts || []; D.etc = D.etc || []; }
   try { const b = await rpc('app_board_list'); D.boards = (b && b.boards) || []; D.posts = (b && b.posts) || []; } catch (_) { D.boards = D.boards || []; D.posts = D.posts || []; }
   try { const x = await rpc('app_payroll_list'); D.closes = (x && x.closes) || []; D.snaps = new Map(((x && x.snaps) || []).map((s) => [s.ym + '|' + s.key, s])); } catch (_) { D.closes = D.closes || []; D.snaps = D.snaps || new Map(); }
   D.loadedAt = new Date();
@@ -50,6 +53,9 @@ export const has = (menu) => {
   const br = D.me.scope === 'branch';
   if (menu === 'pfreein') return D.me.scope === 'own' && hasRaw('pfreein'); // 홍보팀장 본인만 (지국장·총국장은 직할 메뉴)
   if (menu === 'sfreein') return br && (hasRaw('sfreein') || hasRaw('salesin')) && !!D.me.free; // 지국장 본인 자율학기제만
+  // 기타 상품 판매: 홍보팀장 본인(petcin) · 지국장 직할(setcin) · 총국장 직할(getcin)
+  if (menu === 'petcin') return D.me.scope === 'own' && hasRaw('petcin');
+  if (menu === 'setcin') return br && (hasRaw('setcin') || hasRaw('salesin'));
   return hasRaw(menu);
 };
 export const isAdmin = () => !!(D.me && D.me.admin);

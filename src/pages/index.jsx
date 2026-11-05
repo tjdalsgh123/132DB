@@ -10,6 +10,7 @@ import Dashboard from './Dashboard.jsx';
 import GeneralDash from './GeneralDash.jsx';
 import SalesIn from './SalesIn.jsx';
 import FreeIn from './FreeIn.jsx';
+import EtcIn from './EtcIn.jsx';
 import SalesView from './SalesView.jsx';
 import MenuAdmin from './MenuAdmin.jsx';
 import Promoters from './Promoters.jsx';
@@ -33,6 +34,9 @@ export const PAGES = {
   psalesin: () => <SalesIn mode="promoter" />,
   salesin: () => <SalesIn mode="direct" />,
   pfreein: () => <FreeIn mode="promoter" />,
+  petcin: () => <EtcIn mode="promoter" />,
+  setcin: () => <EtcIn mode="branch" />,
+  getcin: () => <EtcIn mode="branch" general />,
   sfreein: () => <FreeIn mode="branch" />,
   psales: () => <SalesView mode="promoter" />,
   sales: () => <SalesView mode="branch" />,
