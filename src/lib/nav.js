@@ -4,9 +4,9 @@ import { D } from './store.js';
 
 export const PAGES = [
   ['branch', '대시보드'], ['board', '게시판'], ['fee', '수당계산기'],
-  ['psalesin', 'KDC 매출 등록'], ['pfreein', '자율학기제 매출 등록'], ['psales', '매출 현황'], ['ppay', '월급 계산'],
-  ['salesin', '직할 매출 등록'], ['sfreein', '자율학기제 직할 등록'], ['sales', '지국 매출 현황'], ['promoters', '홍보팀장 관리'], ['bpay', '지국장 월급 계산'],
-  ['gdash', '총국장 대시보드'], ['gsalesin', '직할 매출 등록'], ['gfreein', '자율학기제 직할 등록'], ['gsales', '총국 매출 현황'], ['gpromoters', '홍보팀장 관리'], ['gpay', '총국장 월급 계산'],
+  ['psalesin', 'KDC 매출 등록'], ['pfreein', '자율학기제 매출 등록'], ['petcin', '기타 상품 판매 등록'], ['psales', '매출 현황'], ['ppay', '월급 계산'],
+  ['salesin', '직할 매출 등록'], ['sfreein', '자율학기제 직할 등록'], ['setcin', '기타 상품 직할 등록'], ['sales', '지국 매출 현황'], ['promoters', '홍보팀장 관리'], ['bpay', '지국장 월급 계산'],
+  ['gdash', '총국장 대시보드'], ['gsalesin', '직할 매출 등록'], ['gfreein', '자율학기제 직할 등록'], ['getcin', '기타 상품 직할 등록'], ['gsales', '총국 매출 현황'], ['gpromoters', '홍보팀장 관리'], ['gpay', '총국장 월급 계산'],
   ['admin', '권한 관리'], ['feeadmin', '수당 관리'], ['paylist', '수당 현황'], ['payedit', '수당 등록'], ['payclose', '월급 마감'], ['logs', '로그 관리'], ['menuadmin', '메뉴 관리'], ['boardadmin', '게시판 관리'],
 ];
 const IDS = PAGES.map((p) => p[0]);
@@ -14,9 +14,9 @@ export const DEFAULT_NAV = [
   { type: 'page', id: 'branch' },
   { type: 'page', id: 'board' },
   { type: 'page', id: 'fee' },
-  { type: 'group', id: 'g_promoter', name: '홍보팀장', items: ['psalesin', 'pfreein', 'psales', 'ppay'] },
-  { type: 'group', id: 'g_branch', name: '지국장', items: ['salesin', 'sfreein', 'sales', 'promoters', 'bpay'] },
-  { type: 'group', id: 'g_general', name: '총국장', items: ['gdash', 'gsalesin', 'gfreein', 'gsales', 'gpromoters', 'gpay'] },
+  { type: 'group', id: 'g_promoter', name: '홍보팀장', items: ['psalesin', 'pfreein', 'petcin', 'psales', 'ppay'] },
+  { type: 'group', id: 'g_branch', name: '지국장', items: ['salesin', 'sfreein', 'setcin', 'sales', 'promoters', 'bpay'] },
+  { type: 'group', id: 'g_general', name: '총국장', items: ['gdash', 'gsalesin', 'gfreein', 'getcin', 'gsales', 'gpromoters', 'gpay'] },
   { type: 'group', id: 'g_admin', name: '관리자', items: ['admin', 'feeadmin', 'paylist', 'payedit', 'payclose', 'logs', 'menuadmin', 'boardadmin'] },
 ];
 // 관리 화면은 숨길 수 없음 (잠김 방지)

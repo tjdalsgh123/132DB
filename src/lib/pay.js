@@ -69,6 +69,7 @@ export const effective = (pk, role, ym) => {
 export const condText = (e) => {
   if (e.src === 'none') return ''; if (e.src === 'exclude') return '제외';
   const it = e.it;
+  if (it.calc_type === 'etc') return '기타 상품 수당표 (인정액 × 판매수당율)';
   if (it.calc_type === 'product') return e.customRate ? '인정액 × ' + pct(e.rate) : '상품별 수당';
   if (it.calc_type === 'tier') return e.customTiers ? '개인 구간표' : '기본 구간표';
   if (it.calc_type === 'rate') return pct(e.rate);
@@ -85,10 +86,14 @@ export const perf = (p, ym) => {
   const fl = D.free.filter((f) => f.ym === fym && f.branch_id === p.branch);
   const fown = p.role === 'promoter' ? fl.filter((f) => f.promoter_id === p.pid) : [];
   const fteam = p.role === 'branch' ? fl : [];
-  const ks = sum(own, 'amount'), kr = sum(own, 'recognized'), fs = sum(fown, 'amount'), fr = sum(fown, 'recognized');
+  // 기타 상품 판매 (GAAT·AICC 등): 자율학기제처럼 매출 월 + 1개월 · 판매액·인정액은 실적에 합산 · 수당은 「기타 상품 판매 수당」 줄
+  const xl = (D.etc || []).filter((f) => f.ym === fym && f.branch_id === p.branch);
+  const xown = p.role === 'promoter' ? xl.filter((f) => f.promoter_id === p.pid) : []; const xteam = p.role === 'branch' ? xl : [];
+  const ks = sum(own, 'amount'), kr = sum(own, 'recognized'), fs = sum(fown, 'amount'), fr = sum(fown, 'recognized'), xs = sum(xown, 'amount'), xr = sum(xown, 'recognized');
   return { kdc_ym: kym, free_ym: fym, kdc_sales: ks, kdc_rec: kr, free_sales: fs, free_rec: fr, free_comm: sum(fown, 'commission'), free_cnt: fown.length, free_amts: fown.map((f) => f.amount),
-    sales: ks + fs, rec: kr + fr, comm: sum(own, 'commission'), cnt: sum(own, 'cnt'), team_sales: sum(team, 'amount') + sum(fteam, 'amount'), team_rec: sum(team, 'recognized') + sum(fteam, 'recognized'), team_free: sum(fteam, 'amount'),
-    registered: own.length > 0 || fown.length > 0, kdcEntries: own };
+    etc_ym: fym, etc_sales: xs, etc_rec: xr, etc_comm: sum(xown, 'commission'), etc_cnt: xown.length, etc_qty: sum(xown, 'qty'),
+    sales: ks + fs + xs, rec: kr + fr + xr, comm: sum(own, 'commission'), cnt: sum(own, 'cnt'), team_sales: sum(team, 'amount') + sum(fteam, 'amount') + sum(xteam, 'amount'), team_rec: sum(team, 'recognized') + sum(fteam, 'recognized') + sum(xteam, 'recognized'), team_free: sum(fteam, 'amount'),
+    registered: own.length > 0 || fown.length > 0 || xown.length > 0, kdcEntries: own };
 };
 export const baseValue = (it, pf, iv) => ({ commission: pf.comm, recognized: pf.rec, recognized_dues: pf.rec + ((iv && iv.amount) || 0), sales: pf.sales, team_sales: pf.team_sales, team_recognized: pf.team_rec, free_sales: pf.free_sales, none: 0 }[it.basis] || 0);
 // pfOverride: 실적을 직접 넘길 때 (지국장 계정 할당 = 가상 홍보팀장 계정)
@@ -121,6 +126,8 @@ export const calc = (p, ym, overrides, noLimit, pfOverride) => {
     }
     lines.push({ it, e, amount, how });
   });
+  if (pf.etc_cnt > 0) { const it = { id: 'etc', name: '기타 상품 판매 수당', calc_type: 'etc' };
+    lines.push({ it, e: { src: 'default', it }, amount: pf.etc_comm, how: pf.etc_ym + ' 기타 상품 ' + won(pf.etc_cnt) + '건 (' + won(pf.etc_qty) + '개) · 판매액 ' + won(pf.etc_sales) + '원 · 인정액 ' + won(pf.etc_rec) + '원 · 상품별 수당 합계' }); }
   const total = sum(lines, 'amount');
   const tax = rdown10(total * RATE_TAX), local = rdown10(total * RATE_LOCAL), rds = rdown10(total * RATE_RDS);
   return { pf, lines, total, tax, local, rds, ded: tax + local + rds, net: total - (tax + local + rds) };

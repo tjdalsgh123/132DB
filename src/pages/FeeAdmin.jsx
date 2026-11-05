@@ -6,6 +6,7 @@ import { XLSX, download, T, Mn, N, P } from '../lib/xlsx.js';
 import { useData } from '../hooks/useData.js';
 import { Btn, MoneyInput, PageHead, Status, Tabs, useLive, useStatus } from '../components/ui.jsx';
 import BranchFee from './BranchFee.jsx';
+import EtcAdmin from './EtcAdmin.jsx';
 
 const copy = (v) => JSON.parse(JSON.stringify(v || []));
 const newId = (p) => p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -14,7 +15,7 @@ const vcMap = () => (D.settings && D.settings.vendor_categories) || {};
 const vcats = (vid) => { const all = (D.fee.categories || []).map((c) => c.id); const l = vcMap()[vid]; return Array.isArray(l) ? l.filter((x) => all.includes(x)) : all; };
 const pairOk = (vid, cid) => !vid || !cid || vcats(vid).includes(cid);
 const tierLabel = (b) => (b == null ? '—' : b % 10000 === 0 ? won(b / 10000) + '만원 이상' : won(b) + '원 이상');
-const TABS = [['kdc', 'KDC 수당관리'], ['promoter', '홍보팀장 수당관리'], ['branch', '지국장 수당관리'], ['general', '총국장 수당관리']];
+const TABS = [['kdc', 'KDC 수당관리'], ['promoter', '홍보팀장 수당관리'], ['branch', '지국장 수당관리'], ['general', '총국장 수당관리'], ['etc', '기타 상품 관리']];
 
 export default function FeeAdmin() {
   useData();
@@ -43,6 +44,7 @@ export default function FeeAdmin() {
       </>}
       {tab === 'branch' && <BranchFee key="b" kind="branch" />}
       {tab === 'general' && <BranchFee key="g" kind="general" />}
+      {tab === 'etc' && <EtcAdmin />}
     </div>
   );
 }
