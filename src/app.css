@@ -483,3 +483,6 @@ body.nl-open { overflow: hidden; }
 .etc-tbl .in.num { width: 7rem; }
 .etc-admin .rate-in { width: 8rem; }
 .etc-admin .money-in { width: 11rem; }
+.role-checks { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+.role-checks .check { min-height: 2.8rem; }
+.role-bulk { gap: var(--sp-3); }

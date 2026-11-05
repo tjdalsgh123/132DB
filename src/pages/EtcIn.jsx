@@ -2,7 +2,7 @@
 // 자율학기제처럼 한 달에 여러 건 · 상품을 고르면 판매가·인정액·수당(인정액 × 판매수당율)이 자동 · 매출 월 + 1개월 월급에 지급
 // mode: 'promoter' = 홍보팀장 · 'branch' = 지국장 직할 · general = 총국장 직할
 import { useEffect, useRef, useState } from 'react';
-import { D, save, keyPrefix, branchChoices, promoterChoices, pname, isAdmin, scope, has, directName, salesLocked } from '../lib/store.js';
+import { D, ETC_ROLES, save, keyPrefix, branchChoices, promoterChoices, pname, isAdmin, scope, has, directName, salesLocked } from '../lib/store.js';
 import { generalBranch, pct } from '../lib/branchpay.js';
 import { won, MSG, nowYm, addYm, ymText, pad, sum, errText } from '../lib/ui.js';
 import { useData } from '../hooks/useData.js';
@@ -23,10 +23,13 @@ export default function EtcIn({ mode, general }) {
   const target = pc.some((x) => x.id === who0) ? who0 : (pc.length === 1 || (isB && pc.length) ? pc[0].id : '');
   const pid = target === DIRECT ? null : target || null;
   const whoName = target === DIRECT ? (GEN ? '총국장 직할 · ' + bnm : directName(branch)) : pname(target);
-  const groups = (D.etcGroups || []).filter((g) => g.active !== false);
-  const prods = D.etcProducts || []; const pm = new Map(prods.map((p) => [p.id, p]));
   const mine = (f) => f.branch_id === branch && (f.promoter_id || null) === pid;
   const sv = (D.etc || []).filter((f) => mine(f) && f.ym === ym).sort((a, b) => a.seq - b.seq);
+  // 판매자 역할에 맞는 상품만 (관리자 → 기타 상품 관리에서 정함) · 이 달에 이미 등록한 상품은 그대로 보임
+  const role = !isB ? 'promoter' : (GEN || (branch && branch === generalBranch())) ? 'general' : 'branch'; const roleName = (ETC_ROLES.find((r) => r[0] === role) || [, ''])[1];
+  const allP = D.etcProducts || []; const pm = new Map(allP.map((p) => [p.id, p])); const had = new Set(sv.map((f) => f.product_id));
+  const prods = allP.filter((p) => (p.roles || []).includes(role) || had.has(p.id));
+  const groups = (D.etcGroups || []).filter((g) => g.active !== false && prods.some((p) => p.group === g.id && p.active !== false));
   const sig = [branch, target, ym, sv.map((f) => [f.id, f.product_id, f.qty, f.customer, f.memo].join(':')).join(',')].join('|');
   const head = [branch, target, ym].join('|');
   const [L, setL] = useState({ base: null, head: null, rows: [], dirty: false });
@@ -57,7 +60,7 @@ export default function EtcIn({ mode, general }) {
   const PH = <PageHead eyebrow={GEN ? '총국장' : isB ? '지국장' : '홍보팀장'} title={isB ? '기타 상품 직할 등록' : '기타 상품 판매 등록'} lede="GAAT·AICC·AICE 자격증반·미래일반·평생교육이용권·사업주과정·판매가능상품 판매를 건별로 등록합니다. 상품을 고르면 판매가·인정액·수당(인정액 × 판매수당율)이 자동 계산되고, 매출 월 + 1개월 뒤(예: 10월 매출 → 11월 월급)에 지급됩니다." />;
   const noOne = !bc.length || (!pc.length && !!branch && bc.length <= 1);
   if (noOne) return (<div className="page">{PH}<Card><h2>{GEN && !bc.length ? '총국장 직할 지국이 정해지지 않았습니다' : isB ? '직할 판매를 등록할 수 없는 계정입니다' : '등록할 수 있는 홍보팀장이 없습니다'}</h2><p className="note">{GEN && !bc.length ? '관리자 → 수당 관리 → 총국장 수당관리에서 총국장 직할 지국을 정해 주세요.' : '관리자에게 「권한 관리」에서 소속·연결 확인을 요청하세요.'}</p></Card></div>);
-  if (!prods.length) return (<div className="page">{PH}<Card><h2>등록된 상품이 없습니다</h2><p className="note">관리자 → 수당 관리 → 기타 상품 관리에서 상품표를 넣어 주세요 (SQL 22_etc_sales.sql 실행 필요).</p></Card></div>);
+  if (!prods.length) return (<div className="page">{PH}<Card><h2>{allP.length ? roleName + ' 판매로 등록할 수 있는 상품이 없습니다' : '등록된 상품이 없습니다'}</h2><p className="note">{allP.length ? '관리자 → 수당 관리 → 기타 상품 관리에서 상품마다 「' + roleName + '」 사용을 켜 주세요.' : '관리자 → 수당 관리 → 기타 상품 관리에서 상품표를 넣어 주세요 (SQL 22_etc_sales.sql 실행 필요).'}</p></Card></div>);
   const last = sv.slice().sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0];
   const modeText = lock ? ym + ' 매출은 ' + lock.ym + ' 월급 마감으로 고칠 수 없습니다 (보기만 가능) · '
     : sv.length ? '등록된 판매를 수정합니다' + (last && last.updated_by ? ' (마지막 수정: ' + last.updated_by + ' ' + last.updated_at + ')' : '') + ' · ' : (target ? '아직 등록되지 않은 달입니다 · 「+ 건 추가」로 입력하세요 · ' : '');
@@ -87,7 +90,7 @@ export default function EtcIn({ mode, general }) {
       </section>
       <Card>
         <div className="card-h"><h2>건별 판매</h2><div className="acts"><Btn kind="primary" onClick={addRow}>+ 건 추가</Btn></div></div>
-        <p className="note">상품군 → 상품 → 수량 순서로 고릅니다 · 고객·기관명은 선택 · 「저장」을 누르면 이 달 목록이 그대로 저장됩니다 · 이 달에 이미 등록한 상품은 등록 때 가격으로 계산됩니다 (상품표를 바꿔도 지난 판매는 그대로)</p>
+        <p className="note">{roleName + ' 판매로 등록할 수 있는 상품만 보입니다 · '}상품군 → 상품 → 수량 순서로 고릅니다 · 고객·기관명은 선택 · 「저장」을 누르면 이 달 목록이 그대로 저장됩니다 · 이 달에 이미 등록한 상품은 등록 때 가격으로 계산됩니다 (상품표를 바꿔도 지난 판매는 그대로)</p>
         <div className="tbl"><table className="items etc-tbl">
           <thead><tr>{['번호', '매출 키', '상품군', '상품', '수량', '판매가', '인정액', '수당 (율)', '고객·기관명', '비고', ''].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
           <tbody ref={tbRef}>

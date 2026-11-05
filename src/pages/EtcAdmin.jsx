@@ -1,7 +1,7 @@
 // 관리자 · 수당 관리 → 기타 상품 관리: 상품군 · 상품표 (판매가 · 인정액 · 판매수당율)
 // 상품 1개 수당 = 인정액 × 판매수당율 · 이미 등록한 판매는 등록 때 값 그대로 (여기서 바꿔도 지난 매출은 안 바뀜)
 import { useReducer, useRef, useState } from 'react';
-import { D, save } from '../lib/store.js';
+import { D, ETC_ROLES, save } from '../lib/store.js';
 import { won, MSG, errText } from '../lib/ui.js';
 import { Btn, MoneyInput, Status, useStatus } from '../components/ui.jsx';
 
@@ -22,7 +22,7 @@ export default function EtcAdmin() {
     const need = []; G.forEach((g, i) => { if (!String(g.name || '').trim()) need.push('g' + i); }); P.forEach((p) => { if (!String(p.title || '').trim()) need.push('p' + p.id); });
     if (need.length) { setBad(new Set(need)); setSt(MSG + ' · 상품군 이름·상품명', 'bad'); return; }
     setBad(new Set());
-    try { const r = await save('app_etc_catalog_save', { p_groups: G.map((g) => ({ id: g.id, name: g.name.trim(), active: g.active !== false, memo: g.memo || '' })), p_products: P.map((p) => ({ id: p.id, group: p.group, title: p.title.trim(), list: p.list || 0, price: p.price || 0, rec: p.rec || 0, rate: Number(p.rate) || 0, memo: p.memo || '', active: p.active !== false })) });
+    try { const r = await save('app_etc_catalog_save', { p_groups: G.map((g) => ({ id: g.id, name: g.name.trim(), active: g.active !== false, memo: g.memo || '' })), p_products: P.map((p) => ({ id: p.id, group: p.group, title: p.title.trim(), list: p.list || 0, price: p.price || 0, rec: p.rec || 0, rate: Number(p.rate) || 0, memo: p.memo || '', active: p.active !== false, roles: p.roles || [] })) });
       S.current.dirty = false; load(true); redraw(); setSt('기타 상품표를 저장했습니다 · 상품군 ' + r.groups + '개 · 상품 ' + r.products + '개 · 새로 등록하는 판매부터 적용', 'ok'); }
     catch (e) { setSt(errText(e), 'bad'); }
   };
@@ -42,6 +42,7 @@ export default function EtcAdmin() {
             <input className="in" type="text" maxLength={200} placeholder="설명" aria-label="상품군 설명" value={g.memo || ''} onChange={(e) => { g.memo = e.target.value; dirty(); }} />
             <label className="check"><input type="checkbox" checked={g.active !== false} onChange={(e) => { g.active = e.target.checked; dirty(); }} /> 사용</label>
             <span className="badge">{P.filter((p) => p.group === g.id).length + '개'}</span>
+            <span className="note">{ETC_ROLES.map(([r, t]) => { const l = P.filter((p) => p.group === g.id); const n = l.filter((p) => (p.roles || []).includes(r)).length; return t + ' ' + (n === l.length && n ? '전체' : n ? n + '개' : '없음'); }).join(' · ')}</span>
             <Btn kind="sm" disabled={P.some((p) => p.group === g.id)} title="상품이 있는 상품군은 뺄 수 없습니다" onClick={() => { G.splice(i, 1); dirty(); }}>빼기</Btn>
           </div>))}
         <Btn kind="sm" onClick={() => { G.push({ id: uid('g_'), name: '', memo: '', active: true }); dirty(); }}>+ 상품군</Btn>
@@ -51,12 +52,17 @@ export default function EtcAdmin() {
           <div className="acts">
             <select className="in" aria-label="상품군 고르기" value={cur} onChange={(e) => setGsel(e.target.value)}>{G.map((g) => <option key={g.id} value={g.id}>{(g.name || '(이름 없음)') + ' (' + P.filter((p) => p.group === g.id).length + ')'}</option>)}</select>
             <input className="in" type="search" placeholder="상품명 검색" aria-label="상품명 검색" value={q} onChange={(e) => setQ(e.target.value)} />
-            <Btn kind="primary" disabled={!cur} onClick={() => { P.push({ id: uid('e_'), group: cur, title: '', list: 0, price: 0, rec: 0, rate: 0, memo: '', active: true }); dirty(); }}>+ 상품</Btn>
+            <Btn kind="primary" disabled={!cur} onClick={() => { P.push({ id: uid('e_'), group: cur, title: '', list: 0, price: 0, rec: 0, rate: 0, memo: '', active: true, roles: ETC_ROLES.map((r) => r[0]) }); dirty(); }}>+ 상품</Btn>
           </div></div>
+        <div className="acts role-bulk"><span className="checks-l">이 상품군 한 번에</span>
+          {ETC_ROLES.map(([r, t]) => <span key={r} className="acts"><span className="note">{t}</span>
+            <Btn kind="sm" onClick={() => { P.filter((p) => p.group === cur).forEach((p) => { p.roles = [...new Set((p.roles || []).concat(r))]; }); dirty(); }}>모두 켜기</Btn>
+            <Btn kind="sm" onClick={() => { P.filter((p) => p.group === cur).forEach((p) => { p.roles = (p.roles || []).filter((x) => x !== r); }); dirty(); }}>모두 끄기</Btn></span>)}</div>
+        <p className="note">사용 역할: 체크한 역할만 「기타 상품 판매 등록」에서 이 상품을 고를 수 있습니다 (홍보팀장 = 홍보팀장 판매 · 지국장 = 지국 직할 판매 · 총국장 = 총국장 직할 판매) · 지국장이 소속 홍보팀장 판매를 대신 넣을 때는 홍보팀장 기준</p>
         <div className="tbl"><table className="items etc-admin">
-          <thead><tr>{['상품명', '수강료·소비자가', '판매가', '인정액', '판매수당율', '1개 수당', '비고', '사용', ''].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+          <thead><tr>{['상품명', '수강료·소비자가', '판매가', '인정액', '판매수당율', '1개 수당', '사용 역할', '비고', '사용', ''].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
           <tbody>
-            {!list.length && <tr><td className="note" colSpan={9}>상품이 없습니다 · 「+ 상품」을 눌러 넣으세요</td></tr>}
+            {!list.length && <tr><td className="note" colSpan={10}>상품이 없습니다 · 「+ 상품」을 눌러 넣으세요</td></tr>}
             {list.map((p) => (
               <tr key={p.id} className={p.active === false ? 'off' : 'on'}>
                 <td><input className={'in' + (bad.has('p' + p.id) ? ' invalid' : '')} type="text" maxLength={80} aria-label="상품명" value={p.title} onChange={(e) => { p.title = e.target.value; dirty(); }} /></td>
@@ -65,6 +71,7 @@ export default function EtcAdmin() {
                 <td><MoneyInput value={p.rec} label={p.title + ' 인정액'} onChange={(v) => { p.rec = v || 0; dirty(); }} /></td>
                 <td><span className="nowrap"><input className="in num rate-in" type="number" min="0" max="100" step="0.1" aria-label={p.title + ' 판매수당율'} defaultValue={String(Math.round((Number(p.rate) || 0) * 100000) / 1000)} onChange={(e) => { p.rate = (Number(e.target.value) || 0) / 100; dirty(); }} /> %</span></td>
                 <td className="num">{won(Math.round((p.rec || 0) * (Number(p.rate) || 0)))}</td>
+                <td><div className="role-checks">{ETC_ROLES.map(([r, t]) => <label key={r} className="check"><input type="checkbox" aria-label={p.title + ' ' + t + ' 사용'} checked={(p.roles || []).includes(r)} onChange={(e) => { p.roles = e.target.checked ? [...new Set((p.roles || []).concat(r))] : (p.roles || []).filter((x) => x !== r); dirty(); }} /> {t}</label>)}</div></td>
                 <td><input className="in" type="text" maxLength={200} aria-label={p.title + ' 비고'} value={p.memo || ''} onChange={(e) => { p.memo = e.target.value; dirty(); }} /></td>
                 <td><input type="checkbox" aria-label={p.title + ' 사용'} checked={p.active !== false} onChange={(e) => { p.active = e.target.checked; dirty(); }} /></td>
                 <td><Btn kind="icon" aria-label={p.title + ' 빼기'} onClick={() => { P.splice(P.indexOf(p), 1); dirty(); }}>×</Btn></td>

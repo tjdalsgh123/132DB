@@ -5,6 +5,8 @@ import { busy } from './ui.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
+// 기타 상품 판매자 역할: 홍보팀장 · 지국장 직할 · 총국장 직할
+export const ETC_ROLES = [['promoter', '홍보팀장'], ['branch', '지국장'], ['general', '총국장']];
 export const D = { me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], etc: [], etcGroups: [], etcProducts: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
 const listeners = new Set();
 export const onChange = (f) => { listeners.add(f); return () => listeners.delete(f); };
@@ -21,7 +23,7 @@ export const load = async () => {
   D.free = (D.free || []).map((a) => ({ id: a[0], branch_id: a[1], promoter_id: a[2], ym: a[3], seq: +a[4] || 0, key: a[5], school: a[6] || '', amount: +a[7] || 0, recognized: +a[8] || 0, commission: +a[9] || 0, memo: a[10] || '', updated_by: a[11] || '', updated_at: a[12] || '' }));
   D.fee = D.fee || {};
   try { const x = await rpc('app_pay_extra'); D.ecats = (x && x.cats) || null; D.bfree = (x && x.bfree) || {}; D.chiefs = (x && x.chiefs) || {}; } catch (_) { D.ecats = null; D.bfree = D.bfree || {}; D.chiefs = D.chiefs || {}; }
-  try { const x = await rpc('app_etc_list'); D.etcGroups = (x && x.groups) || []; D.etcProducts = ((x && x.products) || []).map((p) => ({ ...p, list: +p.list || 0, price: +p.price || 0, rec: +p.rec || 0, rate: +p.rate || 0 }));
+  try { const x = await rpc('app_etc_list'); D.etcGroups = (x && x.groups) || []; D.etcProducts = ((x && x.products) || []).map((p) => ({ ...p, list: +p.list || 0, price: +p.price || 0, rec: +p.rec || 0, rate: +p.rate || 0, roles: Array.isArray(p.roles) ? p.roles : ETC_ROLES.map((r) => r[0]) }));
     D.etc = ((x && x.sales) || []).map((a) => ({ id: a[0], branch_id: a[1], promoter_id: a[2], ym: a[3], seq: +a[4] || 0, key: a[5], product_id: a[6], group_id: a[7], group_name: a[8] || '', title: a[9] || '', qty: +a[10] || 0, price: +a[11] || 0, rec: +a[12] || 0, rate: +a[13] || 0, amount: +a[14] || 0, recognized: +a[15] || 0, commission: +a[16] || 0, customer: a[17] || '', memo: a[18] || '', updated_by: a[19] || '', updated_at: a[20] || '' })); }
   catch (_) { D.etcGroups = D.etcGroups || []; D.etcProducts = D.etcProducts || []; D.etc = D.etc || []; }
   try { const b = await rpc('app_board_list'); D.boards = (b && b.boards) || []; D.posts = (b && b.posts) || []; } catch (_) { D.boards = D.boards || []; D.posts = D.posts || []; }
