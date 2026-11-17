@@ -7,7 +7,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSess
 
 // 기타 상품 판매자 역할: 홍보팀장 · 지국장 직할 · 총국장 직할
 export const ETC_ROLES = [['promoter', '홍보팀장'], ['branch', '지국장'], ['general', '총국장']];
-export const D = { hist: [], me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], etc: [], etcGroups: [], etcProducts: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
+export const D = { me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], etc: [], etcGroups: [], etcProducts: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
 const listeners = new Set();
 export const onChange = (f) => { listeners.add(f); return () => listeners.delete(f); };
 const emit = () => listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
