@@ -7,7 +7,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSess
 
 // 기타 상품 판매자 역할: 홍보팀장 · 지국장 직할 · 총국장 직할
 export const ETC_ROLES = [['promoter', '홍보팀장'], ['branch', '지국장'], ['general', '총국장']];
-export const D = { me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], etc: [], etcGroups: [], etcProducts: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
+export const D = { hist: [], me: null, roles: [], settings: {}, branches: [], promoters: [], entries: [], items: {}, cases: {}, free: [], etc: [], etcGroups: [], etcProducts: [], prod: [], fee: {}, fee_items: [], person_fee: [], inputs: [], users: [], at: '', hash: null };
 const listeners = new Set();
 export const onChange = (f) => { listeners.add(f); return () => listeners.delete(f); };
 const emit = () => listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
@@ -26,6 +26,7 @@ export const load = async () => {
   try { const x = await rpc('app_etc_list'); D.etcGroups = (x && x.groups) || []; D.etcProducts = ((x && x.products) || []).map((p) => ({ ...p, list: +p.list || 0, price: +p.price || 0, rec: +p.rec || 0, rate: +p.rate || 0, roles: Array.isArray(p.roles) ? p.roles : ETC_ROLES.map((r) => r[0]) }));
     D.etc = ((x && x.sales) || []).map((a) => ({ id: a[0], branch_id: a[1], promoter_id: a[2], ym: a[3], seq: +a[4] || 0, key: a[5], product_id: a[6], group_id: a[7], group_name: a[8] || '', title: a[9] || '', qty: +a[10] || 0, price: +a[11] || 0, rec: +a[12] || 0, rate: +a[13] || 0, amount: +a[14] || 0, recognized: +a[15] || 0, commission: +a[16] || 0, customer: a[17] || '', memo: a[18] || '', updated_by: a[19] || '', updated_at: a[20] || '' })); }
   catch (_) { D.etcGroups = D.etcGroups || []; D.etcProducts = D.etcProducts || []; D.etc = D.etc || []; }
+  try { const h = await rpc('app_history_list'); D.hist = (h || []).map((a) => ({ kind: a[0], branch_id: a[1], ym: a[2], amount: +a[3] || 0, label: a[4] || '', memo: a[5] || '', person: a[6] || '' })); } catch (_) { D.hist = D.hist || []; }
   try { const b = await rpc('app_board_list'); D.boards = (b && b.boards) || []; D.posts = (b && b.posts) || []; } catch (_) { D.boards = D.boards || []; D.posts = D.posts || []; }
   try { const x = await rpc('app_payroll_list'); D.closes = (x && x.closes) || []; D.snaps = new Map(((x && x.snaps) || []).map((s) => [s.ym + '|' + s.key, s])); } catch (_) { D.closes = D.closes || []; D.snaps = D.snaps || new Map(); }
   D.loadedAt = new Date();
@@ -114,6 +115,18 @@ export const catsOf = (e) => {
 };
 export const freeOnPromoter = (pid) => isAdmin() ? true : (!!pid && (!!(D.promoters.find((p) => p.id === pid) || {}).free || D.free.some((f) => f.promoter_id === pid)));
 
+// ---------- 과거 매출 (엑셀 이관 · 지국·월 합계) ----------
+// 시스템 매출이 없는 지국·월만 보탬 · 132총국 월 합계에서 지국별 합을 뺀 나머지·자유학기제(지국 없음)는 「총국 (지국 미구분)」
+export const HIST_BRANCH = { id: '_hist', name: '총국 (지국 미구분 · 과거 매출)', active: false, hist: true };
+export const histRows = () => {
+  const H = D.hist || []; if (!H.length) return [];
+  const sysK = new Set(D.entries.map((e) => e.branch_id + '|' + e.ym)); const sysF = new Set(D.free.map((f) => f.ym)); const sysM = new Set(D.entries.map((e) => e.ym));
+  const out = []; const brSum = new Map();
+  H.filter((h) => h.kind === 'kdc' && h.branch_id).forEach((h) => { if (sysK.has(h.branch_id + '|' + h.ym)) return; out.push({ branch_id: h.branch_id, ym: h.ym, kdc: h.amount, free: 0, hist: true }); brSum.set(h.ym, (brSum.get(h.ym) || 0) + h.amount); });
+  H.filter((h) => h.kind === 'kdc_total').forEach((h) => { if (sysM.has(h.ym)) return; const rest = h.amount - (brSum.get(h.ym) || 0); if (rest > 0) out.push({ branch_id: HIST_BRANCH.id, ym: h.ym, kdc: rest, free: 0, hist: true }); });
+  H.filter((h) => h.kind === 'free').forEach((h) => { if (sysF.has(h.ym)) return; out.push({ branch_id: HIST_BRANCH.id, ym: h.ym, kdc: 0, free: h.amount, hist: true }); });
+  return out;
+};
 // ---------- 매출 ----------
 export const findEntry = (branch, promoter, ym) => D.entries.find((e) => e.branch_id === branch && (e.promoter_id || '') === (promoter || '') && e.ym === ym) || null;
 const noOf = (key, i) => { const m = /Case-(\d+)$/.exec(key || ''); return m ? Number(m[1]) : i + 1; };

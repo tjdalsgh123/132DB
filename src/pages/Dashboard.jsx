@@ -1,6 +1,6 @@
 // 대시보드: 볼 수 있는 범위의 지국별 월 매출 한눈에 (KDC + 자율학기제)
 import { useState } from 'react';
-import { D, pmap, vendorName, categoryName, scope, qtyOf, personFree } from '../lib/store.js';
+import { D, pmap, vendorName, categoryName, scope, qtyOf, personFree, histRows, HIST_BRANCH } from '../lib/store.js';
 import { won, pad, sum } from '../lib/ui.js';
 import { useData } from '../hooks/useData.js';
 import { Card, Field, PageHead } from '../components/ui.jsx';
@@ -11,6 +11,7 @@ const branchRows = () => {
   const add = (b, ym, k, a, c) => { const key = b + '|' + ym; const x = m.get(key) || { branch_id: b, ym, kdc: 0, free: 0, cnt: 0 }; x[k] += a; x.cnt += c; m.set(key, x); };
   D.entries.forEach((e) => add(e.branch_id, e.ym, 'kdc', e.amount, e.cnt));
   D.free.forEach((f) => add(f.branch_id, f.ym, 'free', f.amount, 0));
+  histRows().forEach((h) => { add(h.branch_id, h.ym, 'kdc', h.kdc, 0); add(h.branch_id, h.ym, 'free', h.free, 0); }); // 과거 매출 (엑셀 이관)
   return Array.from(m.values()).map((x) => ({ ...x, amount: x.kdc + x.free }));
 };
 
@@ -26,10 +27,10 @@ export default function Dashboard() {
   const pr = isY ? yr : yr.filter((r) => r.ym.slice(5) === per);
   const tot = sum(pr, 'amount'); const prev = !isY && Number(per) > 1 ? sum(yr.filter((r) => r.ym.slice(5) === pad(Number(per) - 1)), 'amount') : 0;
   const act = D.branches.filter((b) => b.active !== false); const reg = new Set(pr.map((r) => r.branch_id));
-  const sc = scope(); const freeShown = D.free.length > 0 || D.promoters.some((p) => personFree(p.id));
+  const sc = scope(); const freeShown = D.free.length > 0 || (D.hist || []).some((h) => h.kind === 'free') || D.promoters.some((p) => personFree(p.id));
   const ser = freeShown ? [{ key: 'kdc', label: 'KDC', color: COLORS[0] }, { key: 'free', label: '자율학기제', color: COLORS[1] }] : [{ key: 'kdc', label: 'KDC', color: COLORS[0] }];
   const md = Array.from({ length: 12 }, (_, i) => { const m = pad(i + 1); const l = yr.filter((r) => r.ym.slice(5) === m); return { m, kdc: sum(l, 'kdc'), free: sum(l, 'free') }; });
-  const bl = D.branches.filter((b) => b.active !== false || pr.some((r) => r.branch_id === b.id)).filter((b) => sc === 'all' || pr.some((r) => r.branch_id === b.id) || b.id === (D.me.branch || ''));
+  const bl = D.branches.concat(pr.some((r) => r.branch_id === HIST_BRANCH.id) ? [HIST_BRANCH] : []).filter((b) => b.active !== false || pr.some((r) => r.branch_id === b.id)).filter((b) => sc === 'all' || pr.some((r) => r.branch_id === b.id) || b.id === (D.me.branch || ''));
   const blist = bl.map((b) => { const l = pr.filter((r) => r.branch_id === b.id); return { key: b.id, label: b.name, value: sum(l, 'amount'), sub: won(sum(l, 'cnt')) + '건' + (sum(l, 'free') ? ' · 자율학기제 ' + won(sum(l, 'free')) + '원' : '') }; }).sort((a, b) => b.value - a.value);
   // 상품 판매 순위
   const pm = pmap(), vn = vendorName(), cn = categoryName(); const by = new Map();
