@@ -1,6 +1,6 @@
 // 총국장 대시보드: 모든 지국 비교 · 월별 추이 · 지국 상세 · 홍보팀장 순위 (매출 월 기준 · KDC + 자율학기제)
 import { useRef, useState } from 'react';
-import { D, chiefName, directName } from '../lib/store.js';
+import { D, chiefName, directName, histRows, HIST_BRANCH } from '../lib/store.js';
 import { won, pad, sum } from '../lib/ui.js';
 import { generalBranch } from '../lib/branchpay.js';
 import { useData } from '../hooks/useData.js';
@@ -13,6 +13,7 @@ const rowsOf = () => {
   const out = [];
   D.entries.forEach((e) => out.push({ b: e.branch_id, p: e.promoter_id || '', ym: e.ym, kdc: +e.amount || 0, free: 0, rec: +e.recognized || 0, cnt: +e.cnt || 0 }));
   D.free.forEach((f) => out.push({ b: f.branch_id, p: f.promoter_id || '', ym: f.ym, kdc: 0, free: +f.amount || 0, rec: +f.recognized || 0, cnt: 0 }));
+  histRows().forEach((h) => out.push({ b: h.branch_id, p: '', ym: h.ym, kdc: h.kdc, free: h.free, rec: 0, cnt: 0, hist: true })); // 과거 매출 (엑셀 이관 · 인정액 없음)
   return out.map((r) => ({ ...r, amount: r.kdc + r.free }));
 };
 const months = (list) => Array.from({ length: 12 }, (_, i) => { const m = pad(i + 1); const l = list.filter((r) => r.ym.slice(5) === m); return { m, kdc: sum(l, 'kdc'), free: sum(l, 'free') }; });
@@ -30,7 +31,7 @@ export default function GeneralDash() {
   const cur = isY ? yr : yr.filter((r) => r.ym.slice(5) === per);
   const prevYm = !isY ? (per === '01' ? (Number(Y) - 1) + '-12' : Y + '-' + pad(Number(per) - 1)) : null;
   const prev = prevYm ? rows.filter((r) => r.ym === prevYm) : [];
-  const brs = D.branches.filter((b) => b.active !== false || rows.some((r) => r.b === b.id));
+  const brs = D.branches.concat(rows.some((r) => r.b === HIST_BRANCH.id) ? [HIST_BRANCH] : []).filter((b) => b.active !== false || rows.some((r) => r.b === b.id));
   const gb = generalBranch();
   const tot = sum(cur, 'amount'); const reg = new Set(cur.map((r) => r.b)); const act = D.branches.filter((b) => b.active !== false);
   const actP = (l) => new Set(l.filter((r) => r.p).map((r) => r.p)).size;
